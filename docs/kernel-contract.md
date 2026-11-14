@@ -258,7 +258,11 @@ fp8 act_quant of the input, bf16 projections, clamped SwiGLU, route weight, bf16
 oracle in the kernel's fp32 order whose silu may move by exp's error, and the down (`tf_dsv41_xp_down_one`/`_multi`, a
 DeepSeek-only copy of Kimi K3's chains with the full E8M0 scale range) against its bytes (also over the release's real
 FP4 expert bytes), each with four controls. The copied plan and combine (`tf_dsv41_route_plan`, `tf_dsv41_xp_combine`)
-are checked end to end through the GPU's own plan, and every launch is recorded for gate 5.
+are checked end to end through the GPU's own plan, and every launch is recorded for gate 5. The decode MoE's
+`tf_dsv41_route_gate_plan` (the router's matvec, route and plan in one launch: the last of its groups to finish reads
+the logits as atomics, ranks the picks and plans) registers twice: its matvec in the matvec suite (exact bytes at 384
+experts, 1 to 16 rows, four controls under `TF_GCTL`), and its route and plan in the route suite on given logits (k 0)
+with the route's four controls.
 The row-split seam's four kernels (`pair_rows.metal`, launched by `pair_rows.zig`) move bf16 frames, never sums:
 `pair_stage` copies this rank's half of a frame row into the slot the relay sends, and `pair_gather` writes both halves
 of every row, its own natively and the peer's from the relayed frame. `pair_argmax` flags a row whose logits are not

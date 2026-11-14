@@ -4,6 +4,8 @@ Each release's page on GitHub has its notes and measurements. See [the 1.0.0 rel
 
 ## Unreleased
 
+- DeepSeek-V4.1 on Metal: decode's router matvec, route and expert plan run as one launch beside the shared expert's up projection, so the MoE takes four waves after its norm instead of six, and the one-row expert kernels decode a word of FP4 codes by shifts; every output and KV byte is unchanged. On an M5 Ultra a round of release layers is 3.4 to 4.3% faster at one row and 2.2 to 3.2% at four.
+
 - GLM-5.3-Flash on CUDA with tensor parallelism: a `prompt_logprobs` request over about 100 tokens no longer hangs every rank at TP=3. The logit gather now broadcasts one block a rank, its staging buffers are counted in the startup memory check, and replies are unchanged (#1571, fixes #1559). Thanks to @gilby.
 
 - README: Pick a model gains a GLM-5.3-Flash Jammed XSFP4 NZ5 row, the checkpoint in the `NVFP4_NZ5` form that #2894 reads, and the GLM CUDA recipe names it beside Jammed XSFP4 (#2981). Thanks to @Bizuayeu.
