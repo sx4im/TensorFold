@@ -150,8 +150,13 @@ pub fn plan(f: *Forward, p: *buffers.Plan, rows: u32) !void {
 
 /// The forward's prefill programs at `rows` (`plan` without the workspace).
 pub fn planPrograms(f: *Forward, p: *buffers.Plan, rows: u32, layers: []const u32) !void {
-    const sizes = [_]u32{ rows, 17, 16 };
-    for (sizes[if (rows > 17) 0 else 1..]) |n| {
+    // The out-of-place mHC boundary writes the second streams buffer at up to
+    // split_rows rows, so the plan must size it that far whenever a segment
+    // reaches it; counts above the largest segment are never emitted.
+    const split_rows: u32 = @intCast(block_prefill.split_rows);
+    const sizes = [_]u32{ rows, split_rows, 17, 16 };
+    for (sizes[if (rows > 17 and rows != split_rows) 0 else 1..]) |n| {
+        if (n > rows) continue;
         const top = try lastStart(f, layers, n, .whole);
         for ([_]i64{ 0, top }) |start| {
             var ea = std.heap.ArenaAllocator.init(f.gpa);
