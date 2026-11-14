@@ -285,7 +285,14 @@ pub const Emitter = struct {
     }
 
     pub fn spare(e: *Emitter) !Arg {
-        return e.buf("w.x{d}", .{1 - e.cur}, .bf16, &.{ e.n, 4 * @as(i64, e.cfg.hidden) });
+        return e.spareRows(e.n);
+    }
+
+    /// The second streams buffer, declared at `rows` rows: the plan sizes a role by its largest
+    /// declared view (buffers.Plan), so a boundary that writes at most `rows` rows declares the
+    /// full range here instead of this segment's `e.n`.
+    pub fn spareRows(e: *Emitter, rows: i64) !Arg {
+        return e.buf("w.x{d}", .{ 1 - e.cur }, .bf16, &.{ rows, 4 * @as(i64, e.cfg.hidden) });
     }
 
     // dense EXL3 projections ---------------------------------------------------------------------------------------

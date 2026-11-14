@@ -65,9 +65,12 @@ pub fn site(s: *Seg, L: u32, which: []const u8, mode: moe.Mode) !void {
     const part = try e.buf("L.mhc.part", .{}, .f32, &.{ n, 4, 40, 32 });
     const c = try e.buf("L.mhc.c", .{}, .bf16, &.{ n, D });
     const tap = try tapOf(e, L, which, mode);
-    // the forward's second streams buffer (mhc.out_of_place): a boundary of at most 32 rows writes it
+    // the forward's second streams buffer (mhc.out_of_place): a boundary of at most 32 rows writes it.
+    // Declare the full out-of-place range, not this segment's rows: the plan sizes the role by its
+    // largest declared view, and the 17-row program's view is the largest the plan sees — an 18- to
+    // 32-row segment would otherwise write past the 17-row allocation.
     const spare = post and n <= split_rows and s.part != .decoder;
-    const xout = if (spare) try e.spare() else x;
+    const xout = if (spare) try e.spareRows(split_rows) else x;
     if (n >= pf_rows) {
         try e.ext("tf_dsv41_mhc_pf_v1.run", &.{
             x,                                        if (post) xout else b0,
