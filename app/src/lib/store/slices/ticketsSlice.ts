@@ -14,7 +14,10 @@ export const ticketsSlice: Slice = (set, get) => ({
   async createTicket(t) {
     const hostId = remoteHostIdForNewTicket(get(), t)
     const ticket = hostId ? await api.createRemoteOrchestratorTicket(hostId, t) : await api.createTicket(t)
-    set((st) => ({ tickets: [ticket, ...st.tickets] }))
+    // Main emits `ticket:update` before the `tickets:create` invoke resolves, so
+    // the same ticket may already be in the store from the live echo (#3338).
+    // Drop it here instead of prepending a second copy.
+    set((st) => ({ tickets: [ticket, ...st.tickets.filter((x) => x.id !== ticket.id)] }))
   },
   async updateTicket(id, patch) {
     await enqueueTicketMutation(id, async () => {
