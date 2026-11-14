@@ -4,6 +4,8 @@ Each release's page on GitHub has its notes and measurements. See [the 1.0.0 rel
 
 ## Unreleased
 
+- DeepSeek-V4.1 on Metal: decode's FP8 projections of 1 to 5 rows issue every weight load before their chains and meet each output's tile roots in one simdgroup, and projections with K in whole 1024s take one column a simdgroup; every output bit is unchanged. On an M5 Ultra a layer's FP8 launches at one row take 214.8 us instead of 247.4 (675 to 778 GB/s) and at four rows 281.4 instead of 325.5.
+
 - README: Pick a model gains a GLM-5.3-Flash Jammed XSFP4 NZ5 row, the checkpoint in the `NVFP4_NZ5` form that #2894 reads, and the GLM CUDA recipe names it beside Jammed XSFP4 (#2981). Thanks to @Bizuayeu.
 
 - HIP, Qwen3.8-Flash-Next on RDNA 3.5 (gfx1151): MTP draft chains now stop under a 0.8 confidence floor by default (was 0.3), the same one-rank rule `prefill_step` uses. Replies are unchanged. One stream decodes about 6% faster and four streams 2.8% (greedy) to 4.6% (sampled) faster (#2697). Thanks to @gilby.
