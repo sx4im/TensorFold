@@ -14,7 +14,11 @@ export const ticketsSlice: Slice = (set, get) => ({
   async createTicket(t) {
     const hostId = remoteHostIdForNewTicket(get(), t)
     const ticket = hostId ? await api.createRemoteOrchestratorTicket(hostId, t) : await api.createTicket(t)
-    set((st) => ({ tickets: [ticket, ...st.tickets] }))
+    // Main persists the ticket and emits `ticket:update` before the create IPC
+    // call resolves, so the live broadcast may already have added this id via
+    // applyTicketUpdate (#3338). Prepending unconditionally showed the new entry
+    // twice until restart; drop any earlier copy of the same id instead.
+    set((st) => ({ tickets: [ticket, ...st.tickets.filter((x) => x.id !== ticket.id)] }))
   },
   async updateTicket(id, patch) {
     await enqueueTicketMutation(id, async () => {
