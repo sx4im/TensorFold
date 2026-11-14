@@ -7,6 +7,7 @@ import { requestSettingsSection, useStore } from '../lib/store'
 import { buildAwayBriefItems } from '../lib/away-brief'
 import { buildNodeDashboard } from '../lib/node-dashboard'
 import { summarizeTerminalActivity } from '../lib/terminal-sessions'
+import { firstLoadedThreadId } from '../lib/thread-open'
 import { buildReadinessDoctor, listReadinessProviderProbes, summarizeDoctor, worstDoctorStatus, type DoctorStatus, type ProbeState } from '../lib/readiness-doctor'
 import type { PersistedProviderStatus,
   AssistantControlSnapshot,
@@ -434,7 +435,8 @@ export function CommandCentre() {
         action: ticket.status === 'review' ? 'Review' : ticket.status === 'needs_clarification' ? 'Clarify' : ticket.runState === 'running' ? 'Running' : 'Dispatch',
         createdAt: ticket.updatedAt,
         onOpen: () => {
-          if (ticket.threadId) openThread(ticket.threadId)
+          const threadId = firstLoadedThreadId([ticket.threadId], threads)
+          if (threadId) openThread(threadId)
           else if (ticket.roomId) openRoom(ticket.roomId)
           else void workTicket(ticket.id)
         },
@@ -457,7 +459,7 @@ export function CommandCentre() {
       })
     }
     return rows.sort(sortRows).slice(0, 12)
-  }, [snapshot, tickets, projects, automations, openThread, openRoom, workTicket, setView, dashboardNow])
+  }, [snapshot, tickets, projects, automations, threads, openThread, openRoom, workTicket, setView, dashboardNow])
 
   const selected = attentionRows.find((row) => row.id === selectedId) ?? attentionRows[0] ?? null
 
@@ -550,6 +552,7 @@ export function CommandCentre() {
       }
     }
     for (const ticket of tickets.filter((t) => t.status === 'review' || t.status === 'needs_clarification')) {
+      const openThreadId = firstLoadedThreadId([ticket.threadId], threads)
       rows.push({
         id: `ticket-review:${ticket.id}`,
         icon: ticket.status === 'review' ? 'check' : 'warning',
@@ -560,9 +563,9 @@ export function CommandCentre() {
         tone: ticket.status === 'needs_clarification' ? 'high' : 'good',
         createdAt: ticket.updatedAt,
         primaryLabel: ticket.status === 'review' ? 'Complete' : 'Mark ready',
-        secondaryLabel: ticket.threadId ? 'Open' : undefined,
+        secondaryLabel: openThreadId ? 'Open' : undefined,
         onPrimary: () => void updateTicket(ticket.id, { status: ticket.status === 'review' ? 'completed' : 'ready' }),
-        onSecondary: ticket.threadId ? () => openThread(ticket.threadId!) : undefined,
+        onSecondary: openThreadId ? () => openThread(openThreadId) : undefined,
       })
     }
     return rows.sort(sortRows).slice(0, 8)
@@ -600,7 +603,7 @@ export function CommandCentre() {
       .slice(0, 4)
   }, [durableJobs])
   const openDurableJob = (job: Job) => {
-    const threadId = job.currentThreadId ?? job.threadId
+    const threadId = firstLoadedThreadId([job.currentThreadId, job.threadId], threads)
     if (threadId) openThread(threadId)
     else if (job.roomId) openRoom(job.roomId)
     else if (job.automationId) setView({ name: 'automations' })
@@ -638,6 +641,7 @@ export function CommandCentre() {
       })
     }
     for (const ticket of tickets.filter((t) => t.runState === 'running' || t.runState === 'queued')) {
+      const openThreadId = firstLoadedThreadId([ticket.threadId], threads)
       jobs.push({
         id: remember(`ticket:${ticket.id}`),
         icon: 'file',
@@ -646,7 +650,7 @@ export function CommandCentre() {
         status: ticket.runState ?? ticket.status,
         tone: ticket.runState === 'queued' ? 'low' : 'normal',
         startedAt: ticket.startedAt ?? ticket.updatedAt,
-        onOpen: () => ticket.threadId ? openThread(ticket.threadId) : void workTicket(ticket.id),
+        onOpen: () => openThreadId ? openThread(openThreadId) : void workTicket(ticket.id),
         ...remoteAttrs(ticket.projectId),
       })
     }
@@ -695,6 +699,7 @@ export function CommandCentre() {
     }
     for (const job of durableJobs) {
       if (!['queued', 'running', 'waiting_approval', 'paused', 'stalled', 'failed', 'dead_letter'].includes(job.status)) continue
+      const openThreadId = firstLoadedThreadId([job.currentThreadId, job.threadId], threads)
       const key = job.ticketId ? `ticket:${job.ticketId}` : job.roomId ? `room:${job.roomId}` : job.missionId ? `mission:${job.missionId}` : job.automationId ? `automation:${job.automationId}` : job.threadId ? `thread:${job.threadId}` : `job:${job.id}`
       if (seen.has(key)) continue
       remember(key)
@@ -714,7 +719,7 @@ export function CommandCentre() {
         status: unverifiable ? `${job.status.replace(/_/g, ' ')} · unverifiable` : job.status.replace(/_/g, ' '),
         tone: job.status === 'failed' || job.status === 'dead_letter' ? 'critical' : unverifiable || job.status === 'stalled' || job.status === 'waiting_approval' ? 'high' : job.status === 'paused' ? 'low' : 'normal',
         startedAt: job.startedAt ?? job.updatedAt,
-        onOpen: job.threadId ? () => openThread(job.threadId!) : job.roomId ? () => openRoom(job.roomId!) : job.automationId ? () => setView({ name: 'automations' }) : undefined,
+        onOpen: openThreadId ? () => openThread(openThreadId) : job.roomId ? () => openRoom(job.roomId!) : job.automationId ? () => setView({ name: 'automations' }) : undefined,
         onResume: canResume ? () => void resumeJob(job.id) : undefined,
         onRetry: canRetry ? () => void retryJob(job.id, 'Manual retry from Command Centre.') : undefined,
         onDeadLetter: canDeadLetter ? () => void deadLetterJob(job.id, 'Archived from Command Centre.') : undefined,
@@ -787,6 +792,7 @@ export function CommandCentre() {
       const at = job.finishedAt ?? job.updatedAt
       const notable = ['failed', 'stalled', 'dead_letter', 'waiting_approval', 'completed'].includes(job.status)
       if (!notable || (at < since && job.status === 'completed')) continue
+      const hasOpenTarget = Boolean(firstLoadedThreadId([job.currentThreadId, job.threadId], threads) || job.roomId || job.automationId)
       add({
         id: `job:${job.id}`,
         icon: jobIcon(job),
@@ -795,8 +801,7 @@ export function CommandCentre() {
         meta: `${cap(job.kind)} / ${relativeTime(at)}`,
         tone: jobTone(job),
         createdAt: at,
-        actionLabel: 'Open',
-        onOpen: () => openDurableJob(job),
+        ...(hasOpenTarget ? { actionLabel: 'Open', onOpen: () => openDurableJob(job) } : {}),
       })
     }
 
@@ -824,6 +829,7 @@ export function CommandCentre() {
     for (const ticket of tickets) {
       if (ticket.updatedAt < since && ticket.status !== 'review' && ticket.status !== 'needs_clarification') continue
       if (ticket.status === 'todo' && !ticket.runState) continue
+      const openThreadId = firstLoadedThreadId([ticket.threadId], threads)
       add({
         id: `ticket:${ticket.id}`,
         icon: ticket.status === 'needs_clarification' ? 'warning' : 'file',
@@ -832,9 +838,9 @@ export function CommandCentre() {
         meta: `${projectName(projects, ticket.projectId)} / ${relativeTime(ticket.updatedAt)}`,
         tone: ticket.status === 'needs_clarification' ? 'high' : ticket.status === 'review' ? 'good' : ticket.priority === 'urgent' ? 'critical' : 'normal',
         createdAt: ticket.updatedAt,
-        actionLabel: ticket.threadId ? 'Open' : 'Work',
+        actionLabel: openThreadId ? 'Open' : 'Work',
         onOpen: () => {
-          if (ticket.threadId) openThread(ticket.threadId)
+          if (openThreadId) openThread(openThreadId)
           else void workTicket(ticket.id)
         },
       })
